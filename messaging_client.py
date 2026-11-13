@@ -105,6 +105,13 @@ import os
 import sys
 import threading
 import requests
+import base64
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey, Ed25519PublicKey)
+
 
 # ===========================================================================
 # TODO: Add any imports you need here.
