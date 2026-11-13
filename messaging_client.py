@@ -285,6 +285,15 @@ class MessagingClient:
     def create_identity(self, name: str) -> None:
         # 1. Generate this user's long-term key pair(s).
         # <your key generation here>
+        private_key = Ed25519PrivateKey.generate()
+        public_key = private_key.public_key()
+
+        public_key_bytes = raw_public(public_key) #Extract the raw bytes of the public key
+        public_key_text = b64e(public_key_bytes)  # Convert to base64 for storage
+
+        private_key_bytes = raw_private(private_key) #Extract the raw bytes of the private key
+        private_key_text = b64e(private_key_bytes)  # Convert to base64 for storage
+
 
         # 2. Store everything in self.state as JSON-friendly values.
         #    Private keys are saved as base64 text with b64e(...) and rebuilt
@@ -293,7 +302,7 @@ class MessagingClient:
         
         self.state.update({
             "identity_priv": "",      # b64e(...) of each long-term private key
-            "public_info": {},        # the public values others need (public keys, etc.)
+            "public_info": {"public_id": public_key_text},        # the public values others need (public keys, etc.)
             "peers": {},              # a dictionary storing the verified public information of other peers you have connected to
             "keys": {},               # a dictionary storing the shared key you have agreed with each peer (as b64e text)
         })
