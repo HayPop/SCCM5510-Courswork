@@ -301,7 +301,7 @@ class MessagingClient:
         # public_info holds ONLY public values: it is sent to the server and to other users.
         
         self.state.update({
-            "identity_priv": "",      # b64e(...) of each long-term private key
+            "identity_priv": private_key_text,      # b64e(...) of each long-term private key
             "public_info": {"public_id": public_key_text},        # the public values others need (public keys, etc.)
             "peers": {},              # a dictionary storing the verified public information of other peers you have connected to
             "keys": {},               # a dictionary storing the shared key you have agreed with each peer (as b64e text)
@@ -330,16 +330,22 @@ class MessagingClient:
         # 1. Read each saved private key back from self.state (it is base64
         #    text; use b64d(...) to get the bytes).
         # <read your saved key material here>
+        private_key_text = self.state["identity_priv"]
+        private_key_bytes = b64d(private_key_text)
 
         # 2. Turn each one back into a key object from the cryptography library
         #    (for example, with a method such as from_private_bytes), and store
         #    it on self so your other methods can use it.
         # self.<your key> = ...
+        self.private_key = Ed25519PrivateKey.from_private_bytes(private_key_bytes)
+
 
         # 3. If your other methods need the matching public keys handy (for
         #    example to build public_info or to compute the client ID), you can
         #    derive and store those here too.
-
+        public_key_text = self.state(["public_id"])
+        public_key_bytes = b64d(public_key_text)
+        self.public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
         raise NotImplementedError("TODO: load_keys")
 
 
