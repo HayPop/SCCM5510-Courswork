@@ -107,17 +107,22 @@ import threading
 import requests
 import base64
 
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import (
-    Ed25519PrivateKey, Ed25519PublicKey)
-import requests
-import hashlib
-import time
 
 
 # ===========================================================================
 # TODO: Add any imports you need here.
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey, Ed25519PublicKey)
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+import requests
+import hashlib
+import time
+
 # You may use any standard Python libraries.
 # You must use cryptography.io for all cryptographic functions.
 # Your implementation must work on SCC machines.
@@ -305,7 +310,7 @@ class MessagingClient:
         
         self.state.update({
             "identity_priv": private_key_text,      # b64e(...) of each long-term private key
-            "public_info": {"public_id": public_key_text},        # the public values others need (public keys, etc.)
+            "public_info": {"public_id": public_key_text, "name": name},        # the public values others need (public keys, etc.)
             "peers": {},              # a dictionary storing the verified public information of other peers you have connected to
             "keys": {},               # a dictionary storing the shared key you have agreed with each peer (as b64e text)
         })
@@ -488,12 +493,23 @@ class MessagingClient:
         record["client_id"] == peer_id proves nothing.
         """
         # 1. Pull the public information out of the record.
+        record_public_id = record["public_info"]["name"]
+        name = record["public_info"]["name"]
 
         # 2. Check it really belongs to peer_id. Think about how peer_id relates
         #    to the keys (this is the check you designed in create_identity).
         #    Raise SecurityError if the check fails.
+        record_public_id_hash = hashlib.sha256(record_public_id).hexdigest()
+
+        if peer_id != record_public_id:
+            raise SecurityError
 
         # 3. Return the verified public information.
+        return {
+            "peer_id": peer_id,
+            "name": name
+        }
+    
         raise NotImplementedError("TODO: verify_contact_keys")
 
 
