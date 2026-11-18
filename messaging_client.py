@@ -493,15 +493,15 @@ class MessagingClient:
         record["client_id"] == peer_id proves nothing.
         """
         # 1. Pull the public information out of the record.
-        record_public_id = record["public_info"]["name"]
+        peer_public_id = record["public_info"]["public_id"]
         name = record["public_info"]["name"]
 
         # 2. Check it really belongs to peer_id. Think about how peer_id relates
         #    to the keys (this is the check you designed in create_identity).
         #    Raise SecurityError if the check fails.
-        record_public_id_hash = hashlib.sha256(record_public_id).hexdigest()
+        record_public_id_hash = hashlib.sha256(peer_public_id).hexdigest()
 
-        if peer_id != record_public_id:
+        if peer_id != peer_public_id:
             raise SecurityError
 
         # 3. Return the verified public information.
@@ -521,12 +521,17 @@ class MessagingClient:
         """
         # 1. Use your own long-term key(s) and the peer's public information to
         #    compute a shared secret that only the two of you can compute.
+        peer_public_id = peer_info["public_info"]["public_id"]
+        shared_key = self.private_key.exchange(peer_public_id)
 
         # 2. Turn that secret into a symmetric key (do not use the raw shared
         #    secret directly as a key; derive a key from it).
+        derived_key = HKDF(algorithm = hashes.SHA256(), length = 32, salt = None, info = None ).derive(shared_key)
 
         # 3. Store the key in self.state (keyed by peer_id) so you do not have
         #    to repeat this, and so it survives a restart. Then return it.tImplementedError("TODO: agree_key")
+        self.state["peers"] = derived_key    
+        return self.state["peers"]
         raise NotImplementedError("TODO: agree_key")
 
 
