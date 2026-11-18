@@ -111,6 +111,9 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey, Ed25519PublicKey)
+import requests
+import hashlib
+import time
 
 
 # ===========================================================================
@@ -311,7 +314,9 @@ class MessagingClient:
         #    which must never change for this user. Think about how another
         #    user, given this ID, could check that keys claiming to be yours
         #    really are (see verify_contact_keys).
-        self.state["client_id"] = ""   # <set this>
+        
+        
+        self.state["client_id"] =  hashlib.sha256(public_key_text).hexdigest()   # <set this>
 
         # 4. Rebuild the key objects (and run on every later start too).
         self.load_keys()
@@ -395,10 +400,24 @@ class MessagingClient:
         # 1. Produce whatever proves this request came from you, using your
         #    long-term key(s) loaded in load_keys. Think about what stops
         #    someone replaying a copy of it later.
+        client_id = self.state["client_id"]
+        timestamp = str(time.time())
+        signature = b64e(self.private_key.sign(body.encode("utf-8")))
 
+        
         # 2. Return it as headers (a dict of strings). Header values must be
         #    strings, so use b64e(...) for any bytes. Include whatever
         #    get_caller needs to identify you and check the proof.
+        headers = {
+            "client_id": client_id,
+            "method": method,
+            "path": path,
+            "timestamp": timestamp,
+            "signature": signature
+        }
+
+        return headers
+
         raise NotImplementedError("TODO: auth_headers")
 
     # ----------------------------------------------------------------------
