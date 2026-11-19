@@ -296,10 +296,10 @@ class MessagingClient:
         private_key = Ed25519PrivateKey.generate()
         public_key = private_key.public_key()
 
-        public_key_bytes = raw_public(public_key) #Extract the raw bytes of the public key
+        public_key_bytes = public_key.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw) #Extract the raw bytes of the public key
         public_key_text = b64e(public_key_bytes)  # Convert to base64 for storage
 
-        private_key_bytes = raw_private(private_key) #Extract the raw bytes of the private key
+        private_key_bytes = private_key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption()) #Extract the raw bytes of the private key
         private_key_text = b64e(private_key_bytes)  # Convert to base64 for storage
 
 
@@ -407,7 +407,6 @@ class MessagingClient:
         # 1. Produce whatever proves this request came from you, using your
         #    long-term key(s) loaded in load_keys. Think about what stops
         #    someone replaying a copy of it later.
-        client_id = self.state["client_id"]
         timestamp = str(time.time())
         signature = b64e(self.private_key.sign(body.encode("utf-8")))
 
@@ -416,7 +415,7 @@ class MessagingClient:
         #    strings, so use b64e(...) for any bytes. Include whatever
         #    get_caller needs to identify you and check the proof.
         headers = {
-            "client_id": client_id,
+            "client_id": self.state["client_id"],
             "method": method,
             "path": path,
             "timestamp": timestamp,
@@ -506,11 +505,11 @@ class MessagingClient:
         if peer_id != peer_public_id:
             raise SecurityError
 
-        # 3. Return the verified public information.
-        return {
-            "peer_id": peer_id,
-            "name": name
-        }
+        else:# 3. Return the verified public information.
+            return {
+                "peer_id": peer_id,
+                "name": name
+            }
     
         raise NotImplementedError("TODO: verify_contact_keys")
 
@@ -523,17 +522,29 @@ class MessagingClient:
         """
         # 1. Use your own long-term key(s) and the peer's public information to
         #    compute a shared secret that only the two of you can compute.
-        peer_public_id = peer_info["public_info"]["public_id"]
-        shared_key = self.private_key.exchange(peer_public_id)
-
+        temp_private_key = X25519PrivateKey.generate()
+        temp_public_key = X25519PrivateKey.public_key()
+        temp_public_key_bytes = temp_public_key.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        
+        shared_key = temp_private_key.exchange(temp_public_key)
+        signed_temp_public_key = b64e(temp_private_key.sign(temp_public_key_bytes))
+       
+        envelope = {
+            "from": self.state["client_id"],
+            "to": peer_id,
+            "type": "message",
+            "message": signed_temp_public_key,
+            "nonce": None,
+            "header": self.auth_headers("POST", "/send", b64e(temp_public_key_bytes))
+        }
         # 2. Turn that secret into a symmetric key (do not use the raw shared
         #    secret directly as a key; derive a key from it).
         derived_key = HKDF(algorithm = hashes.SHA256(), length = 32, salt = None, info = None ).derive(shared_key)
 
         # 3. Store the key in self.state (keyed by peer_id) so you do not have
         #    to repeat this, and so it survives a restart. Then return it.tImplementedError("TODO: agree_key")
-        self.state["peers"] = derived_key    
-        return self.state["peers"]
+        self.state["keys"] = derived_key    
+        return self.state["keys"]
         raise NotImplementedError("TODO: agree_key")
 
 
@@ -546,30 +557,37 @@ class MessagingClient:
         #    (GET /lookup/<peer_id>), verify their keys (verify_contact_keys),
         #    and agree a key (agree_key).
         if bool(self.state["peers"]) == False:
-            r = requests.get("PUTURLHERE", params = {"client_id": peer_id})
+            lookupURL = f"{self.server_url}/lookup/{peer_id}"
+            r = requests.get(lookupURL)
             if r.status_code != 404:
                 peer_record = json.loads(r.text)
-                self.verify_contact_keys(peer_id, peer_record)
+                try:
+                    self.verify_contact_keys(peer_id, peer_record)
+                except SecurityError:
+                    print("Failed to verify peer")
                 self.agree_key(peer_id, peer_record)
+
         # 2. Encrypt and authenticate the text with that key, so only peer_id
         #    can read it and any change is detected. Never reuse a nonce/IV with
         #    the same key, and use an authenticated mode (not ECB, not plain
         #    CBC/CTR).
         nonce = os.urandom(12)
-        aesgcm = AESGCM(self.state["peers"])
-        encryptedMessage = aesgcm.encrypt(nonce, text.encode("utf-8sur"), None)
+        aesgcm = AESGCM(self.state["keys"])
+        encryptedMessage = aesgcm.encrypt(nonce, text.encode("utf-8"), None)
         # 3. Put it in an envelope (a dict) that includes "from" (your client
         #    ID) and "to" (peer_id), plus whatever the recipient needs to
         #    decrypt it, and send it with POST /send.
         envelope = {
             "from": self.state["client_id"],
             "to": peer_id,
-            "message": encryptedMessage,
-            "nonce": nonce,
-            "header": self.auth_headers("POST", "/send", envelope)
+            "type": "message",
+            "message": b64e(encryptedMessage),
+            "nonce": b64e(nonce),
+            "header": self.auth_headers("POST", "/send", text)
         }
+
         
-        r = requests.post('PUTURLHERE', data = envelope)
+        r = requests.post(self.server_url, data = json.dumps(envelope))
 
         return None
         raise NotImplementedError("TODO: send_message")
@@ -586,12 +604,14 @@ class MessagingClient:
         shown as rejected).
         """
         # 1. Check the envelope is addressed to you ("to" is your client ID).
-
+        if envelope["to"] != self.client_id:
+            raise SecurityError
         # 2. Decide what kind of envelope it is. If your design sends any
         #    key-setup envelopes (see agree_key), handle those here and return
         #    None. You may add a helper function for that.
 
         # 3. For a normal message, call unprotect_message and return the text.
+
         raise NotImplementedError("TODO: handle_envelope")
 
     def unprotect_message(self, envelope: dict) -> str:
