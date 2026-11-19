@@ -325,6 +325,7 @@ class MessagingClient:
 
         # 4. Rebuild the key objects (and run on every later start too).
         self.load_keys()
+        return None
     
         raise NotImplementedError("TODO: create_identity")
 
@@ -356,6 +357,7 @@ class MessagingClient:
         public_key_text = self.state(["public_id"])
         public_key_bytes = b64d(public_key_text)
         self.public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
+        return None
         raise NotImplementedError("TODO: load_keys")
 
 
@@ -543,15 +545,33 @@ class MessagingClient:
         # 1. If you have no shared key with peer_id yet: look them up
         #    (GET /lookup/<peer_id>), verify their keys (verify_contact_keys),
         #    and agree a key (agree_key).
-
+        if bool(self.state["peers"]) == False:
+            r = requests.get("PUTURLHERE", params = {"client_id": peer_id})
+            if r.status_code != 404:
+                peer_record = json.loads(r.text)
+                self.verify_contact_keys(peer_id, peer_record)
+                self.agree_key(peer_id, peer_record)
         # 2. Encrypt and authenticate the text with that key, so only peer_id
         #    can read it and any change is detected. Never reuse a nonce/IV with
         #    the same key, and use an authenticated mode (not ECB, not plain
         #    CBC/CTR).
-
+        nonce = os.urandom(12)
+        aesgcm = AESGCM(self.state["peers"])
+        encryptedMessage = aesgcm.encrypt(nonce, text.encode("utf-8sur"), None)
         # 3. Put it in an envelope (a dict) that includes "from" (your client
         #    ID) and "to" (peer_id), plus whatever the recipient needs to
         #    decrypt it, and send it with POST /send.
+        envelope = {
+            "from": self.state["client_id"],
+            "to": peer_id,
+            "message": encryptedMessage,
+            "nonce": nonce,
+            "header": self.auth_headers("POST", "/send", envelope)
+        }
+        
+        r = requests.post('PUTURLHERE', data = envelope)
+
+        return None
         raise NotImplementedError("TODO: send_message")
 
 
